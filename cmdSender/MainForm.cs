@@ -139,7 +139,7 @@ namespace CmdSender
             _scheduler.Stop();
             UpdateStatus("已停止发送");
         }
-
+         
         private void UpdateStatus(string message)
         {
             if (statusStrip.InvokeRequired)
