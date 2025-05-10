@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Runtime.InteropServices;
 using System.Drawing;
+using System.Text;
 
 namespace CmdSender
 {
@@ -10,8 +11,13 @@ namespace CmdSender
         public static extern IntPtr WindowFromPoint(Point pt);
 
         [DllImport("user32.dll", CharSet = CharSet.Auto)]
-        private static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, string lParam);
+        public static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, string lParam);
 
+        [DllImport("user32.dll", CharSet = CharSet.Auto)]
+        public static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, StringBuilder lParam);
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto)]
+        public static extern int SendMessage(IntPtr hWnd, uint Msg, int wParam, int lParam);
         [DllImport("user32.dll")]
         private static extern bool SetForegroundWindow(IntPtr hWnd);
 
@@ -29,21 +35,21 @@ namespace CmdSender
             SendMessage(hWnd, WM_SETTEXT, IntPtr.Zero, text);
         }
 
+        //追加文本
         public static void AppendText(IntPtr hWnd, string text)
         {
-            const uint WM_KEYDOWN = 0x0100;
-            const uint VK_END = 0x23; // End键
+            const uint EM_GETTEXTLENGTH = 0x000E;
             const uint EM_SETSEL = 0x00B1;
             const uint EM_REPLACESEL = 0x00C2;
 
-            // 移动光标到末尾
-            SendMessage(hWnd, WM_KEYDOWN, (IntPtr)VK_END, IntPtr.Zero);
+            // 获取当前文本长度
+            int textLength = SendMessage(hWnd, EM_GETTEXTLENGTH, 0, 0);
 
-            // 设置选中范围为末尾
-            SendMessage(hWnd, EM_SETSEL, (IntPtr)(-1), (IntPtr)(-1));
+            // 移动光标到文本末尾
+            SendMessage(hWnd, EM_SETSEL, textLength, textLength);
 
-            // 插入文本
-            SendMessage(hWnd, EM_REPLACESEL, IntPtr.Zero, text + "\r\n");
+            // 插入新文本（使用fCanUndo=1允许撤销）
+            SendMessage(hWnd, EM_REPLACESEL, (IntPtr)1, text);
         }
     }
 }

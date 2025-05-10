@@ -152,6 +152,7 @@ namespace CmdSender
             }
         }
 
+        // 引用处必须注释掉，否则会导致拖动时无法精准选定窗口
         private void btnSelectWindow_Click(object sender, EventArgs e)
         {
 
