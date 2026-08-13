@@ -39,7 +39,19 @@ namespace CmdSender
         private static extern bool IsWindow(IntPtr hWnd);
 
         [DllImport("user32.dll")]
+        private static extern bool IsWindowUnicode(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetAncestor(IntPtr hWnd, uint gaFlags);
+
+        [DllImport("user32.dll")]
         private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        private static extern bool IsIconic(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 
         [DllImport("user32.dll")]
         private static extern IntPtr GetForegroundWindow();
@@ -69,10 +81,25 @@ namespace CmdSender
             public InputUnion U;
         }
 
+        // 联合体必须包含全部三种输入结构，保证 Marshal.SizeOf(INPUT) 与
+        // Win32 的 sizeof(INPUT) 一致（x64=40, x86=28），否则 SendInput 返回失败。
         [StructLayout(LayoutKind.Explicit)]
         private struct InputUnion
         {
+            [FieldOffset(0)] public MOUSEINPUT mi;
             [FieldOffset(0)] public KEYBDINPUT ki;
+            [FieldOffset(0)] public HARDWAREINPUT hi;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct MOUSEINPUT
+        {
+            public int dx;
+            public int dy;
+            public uint mouseData;
+            public uint dwFlags;
+            public uint time;
+            public IntPtr dwExtraInfo;
         }
 
         [StructLayout(LayoutKind.Sequential)]
@@ -83,6 +110,14 @@ namespace CmdSender
             public uint dwFlags;
             public uint time;
             public IntPtr dwExtraInfo;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct HARDWAREINPUT
+        {
+            public uint uMsg;
+            public ushort wParamL;
+            public ushort wParamH;
         }
 
         [DllImport("user32.dll", SetLastError = true)]
@@ -108,6 +143,8 @@ namespace CmdSender
         private const uint EM_REPLACESEL = 0x00C2;
 
         private const uint CWP_SKIPINVISIBLE = 0x0001;
+
+        private const uint GA_ROOT = 2;
 
         #endregion
 
@@ -177,23 +214,32 @@ namespace CmdSender
         #region 发送方法
 
         /// <summary>
-        /// 通过 PostMessage WM_CHAR 后台发送文本。
-        /// 不激活目标窗口，直接向句柄投递字符消息。
+        /// 通过 PostMessage 后台发送文本，不抢焦点。
+        /// 文本编辑类控件（Edit/RichEdit 等）走 EM_REPLACESEL 追加，
+        /// 中文完美支持（Unicode 与 ANSI 控件通吃）；
+        /// 其他控件按系统 ANSI 代码页（如 GBK）逐字节投递 WM_CHAR，
+        /// 兼容现代记事本等按 ANSI 字节解释字符的窗口。
+        /// 注意：控制台窗口、VSCode 等不使用 WM_CHAR 的应用请改用前台发送。
         /// </summary>
         public static void SendByPostMessage(IntPtr hWnd, string text, bool sendEnter)
         {
             if (hWnd == IntPtr.Zero) return;
 
-            // 给目标控件投递 WM_SETFOCUS，使其在无焦点状态下也能处理 WM_CHAR。
-            // 许多 Edit/RichEdit 控件仅在拥有焦点时才处理键盘消息，否则消息会滞留队列
-            // 直到窗口被激活。预先设置焦点可显著提升后台发送的兼容性。
+            if (IsEditLikeControl(hWnd))
+            {
+                AppendByReplaceSel(hWnd, text, sendEnter);
+                return;
+            }
+
+            // 非编辑类控件：WM_SETFOCUS 提升兼容性，再按 ANSI 字节投递 WM_CHAR
             SendMessage(hWnd, WM_SETFOCUS, 0, 0);
 
             if (!string.IsNullOrEmpty(text))
             {
-                foreach (char c in text)
+                byte[] bytes = Encoding.Default.GetBytes(text);
+                foreach (byte b in bytes)
                 {
-                    PostMessage(hWnd, WM_CHAR, (IntPtr)c, IntPtr.Zero);
+                    PostMessage(hWnd, WM_CHAR, (IntPtr)b, IntPtr.Zero);
                 }
             }
 
@@ -205,21 +251,38 @@ namespace CmdSender
 
         /// <summary>
         /// 通过 SetForegroundWindow + SendInput 前台发送文本。
-        /// 激活目标窗口后注入键盘输入，兼容性更好（支持控制台等）。
-        /// SendInput 使用 UNICODE 标志逐字符注入，不依赖键盘布局，
-        /// 也无需 STA 线程或消息泵，可在后台线程安全调用。
+        /// 先把句柄提升到顶层窗口并激活，再注入键盘输入（UNICODE 逐字符），
+        /// 兼容控制台（cmd）、VSCode、终端等一切接受真实键盘输入的窗口。
+        /// SendInput 无需 STA 线程或消息泵，可在后台线程安全调用。
         /// </summary>
         public static void SendBySendInput(IntPtr hWnd, string text, bool sendEnter)
         {
             if (hWnd == IntPtr.Zero) return;
 
-            ForceSetForegroundWindow(hWnd);
-            Thread.Sleep(50);
+            // SetForegroundWindow 需要顶层窗口句柄，先提升；最小化则先还原
+            IntPtr top = GetAncestor(hWnd, GA_ROOT);
+            if (top == IntPtr.Zero) top = hWnd;
+            if (IsIconic(top)) ShowWindow(top, 9 /*SW_RESTORE*/);
+            ForceSetForegroundWindow(top);
+
+            // 轮询等待目标真正成为前台窗口，再注入输入，
+            // 避免激活尚未完成时输入被投递到其他窗口
+            IntPtr beforeFg = GetForegroundWindow();
+            if (!WaitForeground(top, beforeFg, 1500))
+            {
+                throw new InvalidOperationException(
+                    "无法将目标窗口置于前台，发送已取消（避免误输入到其他窗口）");
+            }
+
+            // 焦点就位等待
+            Thread.Sleep(60);
 
             SendUnicodeText(text ?? "");
 
             if (sendEnter)
             {
+                // 现代记事本等应用处理 Unicode 文本后需要短暂时间，立即注入回车可能被丢弃
+                Thread.Sleep(40);
                 SendEnterKeyInput();
             }
         }
@@ -229,16 +292,55 @@ namespace CmdSender
         /// </summary>
         public static void AppendText(IntPtr hWnd, string text)
         {
-            if (hWnd == IntPtr.Zero || string.IsNullOrEmpty(text)) return;
-
-            int textLength = SendMessage(hWnd, EM_GETTEXTLENGTH, 0, 0);
-            SendMessage(hWnd, EM_SETSEL, textLength, textLength);
-            SendMessage(hWnd, EM_REPLACESEL, (IntPtr)1, text);
+            AppendByReplaceSel(hWnd, text, false);
         }
 
         #endregion
 
         #region 内部方法
+
+        /// <summary>
+        /// 判断窗口是否为文本编辑类控件（支持 EM_REPLACESEL 追加）。
+        /// 现代记事本 RichEditD2DPT 虽标记为 Unicode 窗口，但按 ANSI 解释 WM_CHAR，
+        /// 因此编辑类控件统一走 EM_REPLACESEL 以获得正确的中文支持。
+        /// </summary>
+        private static bool IsEditLikeControl(IntPtr hWnd)
+        {
+            string cls = GetWindowClassName(hWnd);
+            if (string.IsNullOrEmpty(cls)) return false;
+
+            return cls.StartsWith("Edit", StringComparison.OrdinalIgnoreCase)
+                || cls.StartsWith("RichEdit", StringComparison.OrdinalIgnoreCase)
+                || cls.StartsWith("RICHEDIT", StringComparison.OrdinalIgnoreCase)
+                || cls.StartsWith("NotepadTextBox", StringComparison.OrdinalIgnoreCase)
+                || cls.StartsWith("WindowsForms10.EDIT", StringComparison.OrdinalIgnoreCase)
+                || cls.StartsWith("TEdit", StringComparison.OrdinalIgnoreCase)
+                || cls.StartsWith("TMemo", StringComparison.OrdinalIgnoreCase)
+                || cls.StartsWith("TRichEdit", StringComparison.OrdinalIgnoreCase)
+                || cls.StartsWith("Scintilla", StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// 通过 EM_REPLACESEL 在编辑控件末尾追加文本（Unicode 消息，中文无乱码）。
+        /// </summary>
+        private static void AppendByReplaceSel(IntPtr hWnd, string text, bool sendEnter)
+        {
+            if (hWnd == IntPtr.Zero) return;
+
+            if (!string.IsNullOrEmpty(text))
+            {
+                int len = SendMessage(hWnd, EM_GETTEXTLENGTH, 0, 0);
+                SendMessage(hWnd, EM_SETSEL, len, len);
+                SendMessage(hWnd, EM_REPLACESEL, (IntPtr)1, text);
+            }
+
+            if (sendEnter)
+            {
+                int len = SendMessage(hWnd, EM_GETTEXTLENGTH, 0, 0);
+                SendMessage(hWnd, EM_SETSEL, len, len);
+                SendMessage(hWnd, EM_REPLACESEL, (IntPtr)1, "\r\n");
+            }
+        }
 
         private static void SendEnterKey(IntPtr hWnd)
         {
@@ -248,6 +350,7 @@ namespace CmdSender
 
         /// <summary>
         /// 通过 SendInput UNICODE 逐字符注入文本。无特殊字符转义问题。
+        /// 字符间加 15ms 间隔，避免现代记事本等应用在高速连续注入时丢字。
         /// </summary>
         private static void SendUnicodeText(string text)
         {
@@ -265,7 +368,8 @@ namespace CmdSender
                 inputs[1] = inputs[0];
                 inputs[1].U.ki.dwFlags = KEYEVENTF_UNICODE | KEYEVENTF_KEYUP;
 
-                SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(INPUT)));
+                InjectInputs(inputs);
+                Thread.Sleep(15);
             }
         }
 
@@ -286,29 +390,107 @@ namespace CmdSender
             inputs[1] = inputs[0];
             inputs[1].U.ki.dwFlags = KEYEVENTF_KEYUP;
 
-            SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(INPUT)));
+            InjectInputs(inputs);
         }
 
         /// <summary>
-        /// 强制将目标窗口置前。通过 AttachThreadInput 绕过前台窗口限制。
+        /// 调用 SendInput 并校验注入结果，失败时抛出带错误码的异常。
+        /// </summary>
+        private static void InjectInputs(INPUT[] inputs)
+        {
+            uint sent = SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(INPUT)));
+            if (sent != (uint)inputs.Length)
+            {
+                int error = Marshal.GetLastWin32Error();
+                throw new InvalidOperationException(
+                    $"SendInput 注入失败（错误码 {error}，成功 {sent}/{inputs.Length} 个事件）");
+            }
+        }
+
+        /// <summary>
+        /// 轮询等待目标窗口成为前台窗口，超时返回 false。
+        /// 控制台窗口（cmd 等）由宿主进程（Windows Terminal/conhost）托管：
+        /// - 目标与前台均为控制台类窗口 → 视为激活成功（宿主窗口即目标）
+        /// - 前台因本次激活发生变化且与目标同进程 → 视为激活成功
+        /// 其余情况要求前台窗口句柄与目标一致，避免激活失败时输入投递到错误窗口。
+        /// </summary>
+        private static bool WaitForeground(IntPtr hWnd, IntPtr before, int timeoutMs)
+        {
+            int waited = 0;
+            while (waited < timeoutMs)
+            {
+                IntPtr fg = GetForegroundWindow();
+                if (fg == hWnd) return true;
+                if (IsConsoleClass(hWnd) && IsConsoleClass(fg)) return true;
+                if (fg != before && IsSameProcess(fg, hWnd)) return true;
+                Thread.Sleep(20);
+                waited += 20;
+            }
+
+            IntPtr last = GetForegroundWindow();
+            return last == hWnd
+                || (IsConsoleClass(hWnd) && IsConsoleClass(last))
+                || (last != before && IsSameProcess(last, hWnd));
+        }
+
+        /// <summary>
+        /// 判断两个窗口是否属于同一进程。
+        /// </summary>
+        private static bool IsSameProcess(IntPtr a, IntPtr b)
+        {
+            if (a == IntPtr.Zero || b == IntPtr.Zero) return false;
+            uint pidA, pidB;
+            GetWindowThreadProcessId(a, out pidA);
+            GetWindowThreadProcessId(b, out pidB);
+            return pidA == pidB;
+        }
+
+        /// <summary>
+        /// 判断窗口是否为控制台类窗口（控制台宿主托管，前台可能是宿主窗口）。
+        /// </summary>
+        private static bool IsConsoleClass(IntPtr hWnd)
+        {
+            string cls = GetWindowClassName(hWnd);
+            return cls.Equals("ConsoleWindowClass", StringComparison.OrdinalIgnoreCase)
+                || cls.Equals("PseudoConsoleWindow", StringComparison.OrdinalIgnoreCase)
+                || cls.StartsWith("CASCADIA", StringComparison.OrdinalIgnoreCase)
+                || cls.StartsWith("ConEmu", StringComparison.OrdinalIgnoreCase)
+                || cls.StartsWith("mintty", StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// 强制将目标窗口置前。经典方案：把前台窗口线程的输入队列挂到目标窗口线程，
+        /// 使目标线程获得"最近输入"资格，从而允许 SetForegroundWindow 绕过前台锁；
+        /// 并验证激活结果、必要时重试一次。
         /// </summary>
         private static void ForceSetForegroundWindow(IntPtr hWnd)
         {
+            // 目标已在前台则无需处理
+            if (GetForegroundWindow() == hWnd) return;
+
             IntPtr foreWnd = GetForegroundWindow();
             uint procId;
             uint foreThread = GetWindowThreadProcessId(foreWnd, out procId);
             uint appThread = GetWindowThreadProcessId(hWnd, out procId);
 
+            bool attached = false;
             if (foreThread != appThread)
             {
-                uint currentThread = GetCurrentThreadId();
-                AttachThreadInput(foreThread, appThread, true);
-                SetForegroundWindow(hWnd);
-                AttachThreadInput(foreThread, appThread, false);
+                attached = AttachThreadInput(foreThread, appThread, true);
             }
-            else
+            try
             {
                 SetForegroundWindow(hWnd);
+                Thread.Sleep(30);
+                if (GetForegroundWindow() != hWnd)
+                {
+                    // 兜底重试一次（某些窗口激活较慢或首次被拒）
+                    SetForegroundWindow(hWnd);
+                }
+            }
+            finally
+            {
+                if (attached) AttachThreadInput(foreThread, appThread, false);
             }
         }
 

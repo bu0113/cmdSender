@@ -31,9 +31,19 @@
 
 - C# WinForms（.NET Framework 4.8），单 exe，免安装。
 - 发送方式：
-  - 后台发送（PostMessage WM_CHAR）：不抢焦点，适合 Edit/RichEdit 类控件。
-  - 前台发送（SendInput）：自动激活目标窗口后注入键盘输入（UNICODE 逐字符），支持控制台/终端，无特殊字符转义问题。
+  - **后台发送（PostMessage）**：不抢焦点。
+    - 文本编辑类控件（Edit/RichEdit、现代记事本等）走 `EM_REPLACESEL` 追加，中文完美支持；
+    - 其他控件按系统 ANSI 代码页（GBK）逐字节投递 `WM_CHAR`；
+    - 注意：控制台窗口（cmd）、VSCode 不使用 WM_CHAR，**必须改用前台发送**。
+  - **前台发送（SendInput）**：自动激活目标窗口（含最小化还原、Windows Terminal 托管的控制台）后，
+    以 `KEYEVENTF_UNICODE` 逐字符注入真实键盘输入，中文无乱码、无特殊字符转义问题；
+    控制台（cmd）、VSCode、各类终端均适用。
 - 自动识别文本编码（UTF-8 BOM / UTF-16 / 严格 UTF-8 / GBK）。
 - 会话记忆：记住上次打开的文件、循环参数、发送选项、窗口位置与大小（%APPDATA%\CmdSender\settings.json）。
 - 循环调度在后台线程执行，界面不卡顿；关窗自动停止并等待调度退出。
 - 单实例运行，防止误开多个实例。
+
+## 已知限制
+
+- 后台发送对 cmd / VSCode / 终端无效（它们不处理 WM_CHAR），请使用前台发送。
+- 前台发送会激活目标窗口（抢焦点），这是模拟键盘输入的固有行为。

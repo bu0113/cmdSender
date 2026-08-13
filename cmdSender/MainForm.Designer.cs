@@ -396,6 +396,9 @@ namespace CmdSender
                 "后台发送 (PostMessage)",
                 "前台发送 (SendInput)"
             });
+            this.toolTip.SetToolTip(this.comboBoxSendMethod,
+                "后台发送：不抢焦点，适合记事本等文本编辑器（中文正常）\n" +
+                "前台发送：自动激活窗口后模拟键盘输入，cmd/VSCode/终端等必须用此方式");
 
             // ===== richTextBoxContent（文本编辑器） =====
             this.richTextBoxContent.AcceptsTab = true;
