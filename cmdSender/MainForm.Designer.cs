@@ -46,7 +46,9 @@ namespace CmdSender
 
         // 状态栏
         private System.Windows.Forms.StatusStrip statusStrip;
+        private System.Windows.Forms.ToolStripStatusLabel lblTarget;
         private System.Windows.Forms.ToolStripStatusLabel lblStatus;
+        private System.Windows.Forms.ToolStripStatusLabel lblCounter;
         private System.Windows.Forms.ToolStripStatusLabel lblPosition;
 
         // 工具提示
@@ -101,7 +103,9 @@ namespace CmdSender
             this.richTextBoxContent = new System.Windows.Forms.RichTextBox();
 
             this.statusStrip = new System.Windows.Forms.StatusStrip();
+            this.lblTarget = new System.Windows.Forms.ToolStripStatusLabel();
             this.lblStatus = new System.Windows.Forms.ToolStripStatusLabel();
+            this.lblCounter = new System.Windows.Forms.ToolStripStatusLabel();
             this.lblPosition = new System.Windows.Forms.ToolStripStatusLabel();
 
             this.toolTip = new System.Windows.Forms.ToolTip(this.components);
@@ -137,10 +141,13 @@ namespace CmdSender
             this.btnNew.Text = "📄  新建";
             this.btnNew.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             this.btnNew.FlatAppearance.BorderSize = 0;
+            this.btnNew.FlatAppearance.MouseOverBackColor = System.Drawing.Color.FromArgb(228, 230, 236);
+            this.btnNew.FlatAppearance.MouseDownBackColor = System.Drawing.Color.FromArgb(208, 212, 220);
             this.btnNew.BackColor = System.Drawing.Color.FromArgb(250, 250, 252);
             this.btnNew.ForeColor = System.Drawing.Color.FromArgb(60, 60, 60);
             this.btnNew.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
             this.btnNew.Click += new System.EventHandler(this.btnNew_Click);
+            this.toolTip.SetToolTip(this.btnNew, "新建文件 (Ctrl+N)");
 
             // btnOpen
             this.btnOpen.Location = new System.Drawing.Point(106, 6);
@@ -150,10 +157,13 @@ namespace CmdSender
             this.btnOpen.Text = "📂  打开";
             this.btnOpen.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             this.btnOpen.FlatAppearance.BorderSize = 0;
+            this.btnOpen.FlatAppearance.MouseOverBackColor = System.Drawing.Color.FromArgb(228, 230, 236);
+            this.btnOpen.FlatAppearance.MouseDownBackColor = System.Drawing.Color.FromArgb(208, 212, 220);
             this.btnOpen.BackColor = System.Drawing.Color.FromArgb(250, 250, 252);
             this.btnOpen.ForeColor = System.Drawing.Color.FromArgb(60, 60, 60);
             this.btnOpen.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
             this.btnOpen.Click += new System.EventHandler(this.btnOpen_Click);
+            this.toolTip.SetToolTip(this.btnOpen, "打开文本文件 (Ctrl+O，也可直接拖文件到编辑区)");
 
             // btnSave
             this.btnSave.Location = new System.Drawing.Point(204, 6);
@@ -163,10 +173,13 @@ namespace CmdSender
             this.btnSave.Text = "💾  保存";
             this.btnSave.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             this.btnSave.FlatAppearance.BorderSize = 0;
+            this.btnSave.FlatAppearance.MouseOverBackColor = System.Drawing.Color.FromArgb(228, 230, 236);
+            this.btnSave.FlatAppearance.MouseDownBackColor = System.Drawing.Color.FromArgb(208, 212, 220);
             this.btnSave.BackColor = System.Drawing.Color.FromArgb(250, 250, 252);
             this.btnSave.ForeColor = System.Drawing.Color.FromArgb(60, 60, 60);
             this.btnSave.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
             this.btnSave.Click += new System.EventHandler(this.btnSave_Click);
+            this.toolTip.SetToolTip(this.btnSave, "保存文件 (Ctrl+S)");
 
             // btnSaveAs
             this.btnSaveAs.Location = new System.Drawing.Point(302, 6);
@@ -176,10 +189,13 @@ namespace CmdSender
             this.btnSaveAs.Text = "📑  另存为";
             this.btnSaveAs.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             this.btnSaveAs.FlatAppearance.BorderSize = 0;
+            this.btnSaveAs.FlatAppearance.MouseOverBackColor = System.Drawing.Color.FromArgb(228, 230, 236);
+            this.btnSaveAs.FlatAppearance.MouseDownBackColor = System.Drawing.Color.FromArgb(208, 212, 220);
             this.btnSaveAs.BackColor = System.Drawing.Color.FromArgb(250, 250, 252);
             this.btnSaveAs.ForeColor = System.Drawing.Color.FromArgb(60, 60, 60);
             this.btnSaveAs.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
             this.btnSaveAs.Click += new System.EventHandler(this.btnSaveAs_Click);
+            this.toolTip.SetToolTip(this.btnSaveAs, "另存为 (Ctrl+Shift+S)");
 
             // ===== panelRight（右侧控制面板） =====
             this.panelRight.AutoScroll = true;
@@ -211,6 +227,8 @@ namespace CmdSender
             this.btnSelectWindow.Text = "🎯  按住拖动到目标窗口";
             this.btnSelectWindow.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             this.btnSelectWindow.FlatAppearance.BorderSize = 0;
+            this.btnSelectWindow.FlatAppearance.MouseOverBackColor = System.Drawing.Color.FromArgb(0, 150, 135);
+            this.btnSelectWindow.FlatAppearance.MouseDownBackColor = System.Drawing.Color.FromArgb(0, 115, 103);
             this.btnSelectWindow.BackColor = System.Drawing.Color.FromArgb(0, 133, 119);
             this.btnSelectWindow.ForeColor = System.Drawing.Color.White;
             this.btnSelectWindow.Font = new System.Drawing.Font("Microsoft YaHei UI", 9F, System.Drawing.FontStyle.Bold);
@@ -262,11 +280,13 @@ namespace CmdSender
             this.btnSingleSend.Text = "▶  单次发送 (光标所在行)";
             this.btnSingleSend.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             this.btnSingleSend.FlatAppearance.BorderSize = 0;
+            this.btnSingleSend.FlatAppearance.MouseOverBackColor = System.Drawing.Color.FromArgb(0, 135, 230);
+            this.btnSingleSend.FlatAppearance.MouseDownBackColor = System.Drawing.Color.FromArgb(0, 105, 190);
             this.btnSingleSend.BackColor = System.Drawing.Color.FromArgb(0, 120, 215);
             this.btnSingleSend.ForeColor = System.Drawing.Color.White;
             this.btnSingleSend.Font = new System.Drawing.Font("Microsoft YaHei UI", 9F, System.Drawing.FontStyle.Bold);
             this.btnSingleSend.Click += new System.EventHandler(this.btnSingleSend_Click);
-            this.toolTip.SetToolTip(this.btnSingleSend, "将光标所在行的文本发送到目标窗口");
+            this.toolTip.SetToolTip(this.btnSingleSend, "将光标所在行的文本发送到目标窗口 (F5)");
 
             // btnCycleControl
             this.btnCycleControl.Location = new System.Drawing.Point(10, 58);
@@ -276,11 +296,13 @@ namespace CmdSender
             this.btnCycleControl.Text = "🔁  开始循环";
             this.btnCycleControl.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             this.btnCycleControl.FlatAppearance.BorderSize = 0;
+            this.btnCycleControl.FlatAppearance.MouseOverBackColor = System.Drawing.Color.FromArgb(25, 150, 25);
+            this.btnCycleControl.FlatAppearance.MouseDownBackColor = System.Drawing.Color.FromArgb(10, 105, 10);
             this.btnCycleControl.BackColor = System.Drawing.Color.FromArgb(16, 124, 16);
             this.btnCycleControl.ForeColor = System.Drawing.Color.White;
             this.btnCycleControl.Font = new System.Drawing.Font("Microsoft YaHei UI", 9F, System.Drawing.FontStyle.Bold);
             this.btnCycleControl.Click += new System.EventHandler(this.btnCycleControl_Click);
-            this.toolTip.SetToolTip(this.btnCycleControl, "循环发送选中的行（未选中则发送全部非空行）");
+            this.toolTip.SetToolTip(this.btnCycleControl, "循环发送选中的行（未选中则发送全部非空行） (F6)");
 
             // ===== groupBoxParams（循环参数） =====
             this.groupBoxParams.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left) | System.Windows.Forms.AnchorStyles.Right)));
@@ -303,11 +325,11 @@ namespace CmdSender
             // labelLineInterval
             this.labelLineInterval.Location = new System.Drawing.Point(10, 25);
             this.labelLineInterval.Name = "labelLineInterval";
-            this.labelLineInterval.Size = new System.Drawing.Size(85, 20);
+            this.labelLineInterval.Size = new System.Drawing.Size(90, 20);
             this.labelLineInterval.Text = "行间隔(ms):";
 
             // numericUpDownLineInterval
-            this.numericUpDownLineInterval.Location = new System.Drawing.Point(100, 22);
+            this.numericUpDownLineInterval.Location = new System.Drawing.Point(104, 22);
             this.numericUpDownLineInterval.Maximum = new decimal(new int[] { 60000, 0, 0, 0 });
             this.numericUpDownLineInterval.Minimum = new decimal(new int[] { 10, 0, 0, 0 });
             this.numericUpDownLineInterval.Name = "numericUpDownLineInterval";
@@ -317,11 +339,11 @@ namespace CmdSender
             // labelCycleInterval
             this.labelCycleInterval.Location = new System.Drawing.Point(10, 50);
             this.labelCycleInterval.Name = "labelCycleInterval";
-            this.labelCycleInterval.Size = new System.Drawing.Size(85, 20);
+            this.labelCycleInterval.Size = new System.Drawing.Size(90, 20);
             this.labelCycleInterval.Text = "循环间隔(ms):";
 
             // numericUpDownCycleInterval
-            this.numericUpDownCycleInterval.Location = new System.Drawing.Point(100, 47);
+            this.numericUpDownCycleInterval.Location = new System.Drawing.Point(104, 47);
             this.numericUpDownCycleInterval.Maximum = new decimal(new int[] { 60000, 0, 0, 0 });
             this.numericUpDownCycleInterval.Minimum = new decimal(new int[] { 100, 0, 0, 0 });
             this.numericUpDownCycleInterval.Name = "numericUpDownCycleInterval";
@@ -331,11 +353,11 @@ namespace CmdSender
             // labelCycleCount
             this.labelCycleCount.Location = new System.Drawing.Point(10, 75);
             this.labelCycleCount.Name = "labelCycleCount";
-            this.labelCycleCount.Size = new System.Drawing.Size(85, 20);
+            this.labelCycleCount.Size = new System.Drawing.Size(90, 20);
             this.labelCycleCount.Text = "循环次数:";
 
             // numericUpDownCycleCount
-            this.numericUpDownCycleCount.Location = new System.Drawing.Point(100, 72);
+            this.numericUpDownCycleCount.Location = new System.Drawing.Point(104, 72);
             this.numericUpDownCycleCount.Maximum = new decimal(new int[] { 9999, 0, 0, 0 });
             this.numericUpDownCycleCount.Minimum = new decimal(new int[] { 0, 0, 0, 0 });
             this.numericUpDownCycleCount.Name = "numericUpDownCycleCount";
@@ -343,7 +365,7 @@ namespace CmdSender
             this.numericUpDownCycleCount.Value = new decimal(new int[] { 0, 0, 0, 0 });
 
             // labelCycleCountHint
-            this.labelCycleCountHint.Location = new System.Drawing.Point(195, 75);
+            this.labelCycleCountHint.Location = new System.Drawing.Point(198, 75);
             this.labelCycleCountHint.Name = "labelCycleCountHint";
             this.labelCycleCountHint.Size = new System.Drawing.Size(60, 20);
             this.labelCycleCountHint.Text = "(0=无限)";
@@ -362,21 +384,22 @@ namespace CmdSender
             // labelSendMethod
             this.labelSendMethod.Location = new System.Drawing.Point(10, 125);
             this.labelSendMethod.Name = "labelSendMethod";
-            this.labelSendMethod.Size = new System.Drawing.Size(85, 20);
+            this.labelSendMethod.Size = new System.Drawing.Size(90, 20);
             this.labelSendMethod.Text = "发送方式:";
 
             // comboBoxSendMethod
             this.comboBoxSendMethod.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
-            this.comboBoxSendMethod.Location = new System.Drawing.Point(100, 122);
+            this.comboBoxSendMethod.Location = new System.Drawing.Point(104, 122);
             this.comboBoxSendMethod.Name = "comboBoxSendMethod";
-            this.comboBoxSendMethod.Size = new System.Drawing.Size(155, 21);
+            this.comboBoxSendMethod.Size = new System.Drawing.Size(150, 21);
             this.comboBoxSendMethod.Items.AddRange(new object[] {
                 "后台发送 (PostMessage)",
-                "前台发送 (SendKeys)"
+                "前台发送 (SendInput)"
             });
 
             // ===== richTextBoxContent（文本编辑器） =====
             this.richTextBoxContent.AcceptsTab = true;
+            this.richTextBoxContent.AllowDrop = true;
             this.richTextBoxContent.Dock = System.Windows.Forms.DockStyle.Fill;
             this.richTextBoxContent.Font = new System.Drawing.Font("Consolas", 10F);
             this.richTextBoxContent.Location = new System.Drawing.Point(0, 35);
@@ -385,16 +408,27 @@ namespace CmdSender
             this.richTextBoxContent.Size = new System.Drawing.Size(620, 593);
             this.richTextBoxContent.TabIndex = 0;
             this.richTextBoxContent.WordWrap = false;
+            this.richTextBoxContent.DragEnter += new System.Windows.Forms.DragEventHandler(this.richTextBoxContent_DragEnter);
+            this.richTextBoxContent.DragDrop += new System.Windows.Forms.DragEventHandler(this.richTextBoxContent_DragDrop);
             this.richTextBoxContent.TextChanged += new System.EventHandler(this.richTextBoxContent_TextChanged);
             this.richTextBoxContent.SelectionChanged += new System.EventHandler(this.richTextBoxContent_SelectionChanged);
 
             // ===== statusStrip（状态栏） =====
             this.statusStrip.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
+                this.lblTarget,
                 this.lblStatus,
+                this.lblCounter,
                 this.lblPosition});
             this.statusStrip.Location = new System.Drawing.Point(0, 628);
             this.statusStrip.Name = "statusStrip";
             this.statusStrip.Size = new System.Drawing.Size(900, 22);
+
+            // lblTarget
+            this.lblTarget.AutoSize = false;
+            this.lblTarget.Name = "lblTarget";
+            this.lblTarget.Size = new System.Drawing.Size(200, 17);
+            this.lblTarget.Text = "目标: 无";
+            this.lblTarget.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
 
             // lblStatus
             this.lblStatus.Name = "lblStatus";
@@ -402,6 +436,12 @@ namespace CmdSender
             this.lblStatus.Spring = true;
             this.lblStatus.Text = "就绪";
             this.lblStatus.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
+
+            // lblCounter
+            this.lblCounter.Name = "lblCounter";
+            this.lblCounter.Size = new System.Drawing.Size(160, 17);
+            this.lblCounter.Text = "";
+            this.lblCounter.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
 
             // lblPosition
             this.lblPosition.Name = "lblPosition";
@@ -413,7 +453,10 @@ namespace CmdSender
             // 控件添加顺序决定 Dock 停靠优先级：
             // 最后添加的控件 z-order 最高，最先被 Dock 处理。
             // 顺序：Fill(最先添加，最后停靠) → Right → Top → Bottom(最后添加，最先停靠)
+            this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.ClientSize = new System.Drawing.Size(900, 650);
+            this.Font = new System.Drawing.Font("Microsoft YaHei UI", 9F);
+            this.KeyPreview = true;
             this.MinimumSize = new System.Drawing.Size(700, 500);
             this.Controls.Add(this.richTextBoxContent);
             this.Controls.Add(this.panelRight);

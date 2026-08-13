@@ -11,8 +11,8 @@ namespace CmdSender
     {
         /// <summary>后台 PostMessage WM_CHAR</summary>
         PostMessage = 0,
-        /// <summary>前台 SetForegroundWindow + SendKeys</summary>
-        SendKeys = 1
+        /// <summary>前台 SetForegroundWindow + SendInput 模拟键盘</summary>
+        SendInput = 1
     }
 
     /// <summary>
@@ -47,10 +47,16 @@ namespace CmdSender
         public int TotalCycles { get; set; }
         /// <summary>发送的命令内容</summary>
         public string Command { get; set; }
+        /// <summary>累计已发送条数</summary>
+        public long TotalSent { get; set; }
+        /// <summary>预计剩余秒数（无限循环时为 null）</summary>
+        public int? EstimatedRemainingSeconds { get; set; }
     }
 
     /// <summary>
     /// 命令调度器。基于 async/await 实现行间间隔与循环间隔的精确控制。
+    /// 循环主体在后台线程（ThreadPool）执行，不阻塞 UI 线程；
+    /// 事件在后台线程触发，UI 侧负责跨线程封送。
     /// </summary>
     public class Scheduler
     {
@@ -61,39 +67,61 @@ namespace CmdSender
         private SchedulerConfig _config;
         private int _generation;
 
-        /// <summary>每条命令发送后触发</summary>
+        /// <summary>每条命令发送后触发（后台线程）</summary>
         public event EventHandler<CommandSentEventArgs> OnCommandSent;
-        /// <summary>状态变更时触发</summary>
+        /// <summary>状态变更时触发（后台线程）</summary>
         public event EventHandler<string> OnStatusChanged;
-        /// <summary>发送完成（正常结束或取消）时触发</summary>
+        /// <summary>发送完成（正常结束或取消）时触发（后台线程）</summary>
         public event EventHandler OnCompleted;
 
         /// <summary>调度器是否正在运行</summary>
         public bool IsRunning => _task != null && !_task.IsCompleted;
 
         /// <summary>
-        /// 启动循环发送。
+        /// 启动循环发送。立即返回，循环在后台线程执行。
         /// </summary>
         public void Start(IntPtr handle, string[] commands, SchedulerConfig config)
         {
             Stop();
 
             _targetHandle = handle;
-            _commands = commands;
-            _config = config;
+            _commands = commands ?? new string[0];
+            _config = config ?? throw new ArgumentNullException(nameof(config));
             _generation++;
             int gen = _generation;
 
             _cts = new CancellationTokenSource();
-            _task = RunLoopAsync(_cts.Token, gen);
+            // Task.Run: 循环主体在线程池执行，await 后续代码不再回到 UI 上下文，
+            // 避免 SendKeys(含 Sleep) 阻塞界面。
+            _task = Task.Run(() => RunLoopAsync(_cts.Token, gen), CancellationToken.None);
         }
 
         /// <summary>
-        /// 停止发送。
+        /// 请求停止发送。不阻塞，循环将在最近的检查点退出。
         /// </summary>
         public void Stop()
         {
             _cts?.Cancel();
+        }
+
+        /// <summary>
+        /// 请求停止并等待任务结束（限时）。
+        /// </summary>
+        public void WaitForStop(int timeoutMs = 1000)
+        {
+            _cts?.Cancel();
+            try
+            {
+                _task?.Wait(timeoutMs);
+            }
+            catch (AggregateException)
+            {
+                // 取消导致的异常忽略
+            }
+            catch (Exception)
+            {
+                // 忽略
+            }
         }
 
         /// <summary>
@@ -104,6 +132,7 @@ namespace CmdSender
         private async Task RunLoopAsync(CancellationToken token, int generation)
         {
             int cycleNumber = 0;
+            long totalSent = 0;
 
             try
             {
@@ -124,6 +153,7 @@ namespace CmdSender
 
                         string cmd = _commands[i];
                         SendCommand(cmd);
+                        totalSent++;
 
                         OnCommandSent?.Invoke(this, new CommandSentEventArgs
                         {
@@ -131,7 +161,9 @@ namespace CmdSender
                             TotalLines = _commands.Length,
                             CycleNumber = cycleNumber,
                             TotalCycles = _config.CycleCount,
-                            Command = cmd
+                            Command = cmd,
+                            TotalSent = totalSent,
+                            EstimatedRemainingSeconds = EstimateRemainingSeconds(cycleNumber, i)
                         });
 
                         // 行间等待（最后一行后不再等待行间隔）
@@ -144,7 +176,7 @@ namespace CmdSender
                     // 检查循环次数（0 = 无限）
                     if (_config.CycleCount > 0 && cycleNumber >= _config.CycleCount)
                     {
-                        OnStatusChanged?.Invoke(this, $"发送完成，共 {cycleNumber} 轮");
+                        OnStatusChanged?.Invoke(this, $"发送完成，共 {cycleNumber} 轮 {totalSent} 条命令");
                         break;
                     }
 
@@ -158,16 +190,39 @@ namespace CmdSender
             }
             catch (Exception ex)
             {
-                OnStatusChanged?.Invoke(this, $"发送异常: {ex.Message}");
+                try { OnStatusChanged?.Invoke(this, $"发送异常: {ex.Message}"); } catch { }
             }
             finally
             {
                 // 仅最新 generation 的完成事件才会触发
                 if (generation == _generation)
                 {
-                    OnCompleted?.Invoke(this, EventArgs.Empty);
+                    try { OnCompleted?.Invoke(this, EventArgs.Empty); } catch { }
                 }
             }
+        }
+
+        /// <summary>
+        /// 估算剩余发送时间（秒）。无限循环返回 null。
+        /// 每轮耗时 = (行数-1)*行间隔 + 循环间隔（最后一轮无循环间隔）。
+        /// </summary>
+        private int? EstimateRemainingSeconds(int cycleNumber, int lineIndex)
+        {
+            if (_config.CycleCount <= 0) return null;
+
+            long rowTime = (_commands.Length - 1) * (long)_config.LineInterval;
+            long linesLeftInCurrent = _commands.Length - (lineIndex + 1);
+            long currentCycleRemaining = linesLeftInCurrent * (long)_config.LineInterval;
+
+            long cyclesLeft = _config.CycleCount - cycleNumber;
+            long futureMs = 0;
+            if (cyclesLeft > 0)
+            {
+                futureMs = cyclesLeft * rowTime + (cyclesLeft - 1) * (long)_config.CycleInterval;
+            }
+
+            long totalMs = currentCycleRemaining + futureMs;
+            return (int)Math.Ceiling(totalMs / 1000.0);
         }
 
         /// <summary>
@@ -177,9 +232,9 @@ namespace CmdSender
         {
             try
             {
-                if (_config.Method == SendMethod.SendKeys)
+                if (_config.Method == SendMethod.SendInput)
                 {
-                    CommandSender.SendBySendKeys(_targetHandle, cmd, _config.SendEnter);
+                    CommandSender.SendBySendInput(_targetHandle, cmd, _config.SendEnter);
                 }
                 else
                 {

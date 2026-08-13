@@ -6,6 +6,7 @@
     <UseWindowsForms>true</UseWindowsForms>
     <RootNamespace>CmdSender</RootNamespace>
     <AssemblyName>cmdSender</AssemblyName>
+    <LangVersion>latest</LangVersion>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <PlatformTarget>AnyCPU</PlatformTarget>

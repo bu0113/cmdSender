@@ -3,7 +3,6 @@ using System.Runtime.InteropServices;
 using System.Drawing;
 using System.Text;
 using System.Threading;
-using System.Windows.Forms;
 
 namespace CmdSender
 {
@@ -60,8 +59,34 @@ namespace CmdSender
         [DllImport("user32.dll", CharSet = CharSet.Auto)]
         private static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, string lParam);
 
-        [DllImport("user32.dll", CharSet = CharSet.Auto)]
+        [DllImport("user32.dll")]
         private static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct INPUT
+        {
+            public uint type;
+            public InputUnion U;
+        }
+
+        [StructLayout(LayoutKind.Explicit)]
+        private struct InputUnion
+        {
+            [FieldOffset(0)] public KEYBDINPUT ki;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct KEYBDINPUT
+        {
+            public ushort wVk;
+            public ushort wScan;
+            public uint dwFlags;
+            public uint time;
+            public IntPtr dwExtraInfo;
+        }
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
 
         #endregion
 
@@ -72,6 +97,11 @@ namespace CmdSender
         private const uint WM_KEYUP = 0x0101;
         private const uint WM_SETFOCUS = 0x0007;
         private const int VK_RETURN = 0x0D;
+
+        private const uint INPUT_KEYBOARD = 1;
+        private const uint KEYEVENTF_EXTENDEDKEY = 0x0001;
+        private const uint KEYEVENTF_KEYUP = 0x0002;
+        private const uint KEYEVENTF_UNICODE = 0x0004;
 
         private const uint EM_GETTEXTLENGTH = 0x000E;
         private const uint EM_SETSEL = 0x00B1;
@@ -174,25 +204,23 @@ namespace CmdSender
         }
 
         /// <summary>
-        /// 通过 SetForegroundWindow + SendKeys 前台发送文本。
-        /// 激活目标窗口后模拟键盘输入，兼容性更好（支持控制台等）。
+        /// 通过 SetForegroundWindow + SendInput 前台发送文本。
+        /// 激活目标窗口后注入键盘输入，兼容性更好（支持控制台等）。
+        /// SendInput 使用 UNICODE 标志逐字符注入，不依赖键盘布局，
+        /// 也无需 STA 线程或消息泵，可在后台线程安全调用。
         /// </summary>
-        public static void SendBySendKeys(IntPtr hWnd, string text, bool sendEnter)
+        public static void SendBySendInput(IntPtr hWnd, string text, bool sendEnter)
         {
             if (hWnd == IntPtr.Zero) return;
 
             ForceSetForegroundWindow(hWnd);
             Thread.Sleep(50);
 
-            string sendKeysText = EscapeForSendKeys(text ?? "");
+            SendUnicodeText(text ?? "");
+
             if (sendEnter)
             {
-                sendKeysText += "{ENTER}";
-            }
-
-            if (!string.IsNullOrEmpty(sendKeysText))
-            {
-                SendKeys.SendWait(sendKeysText);
+                SendEnterKeyInput();
             }
         }
 
@@ -219,6 +247,49 @@ namespace CmdSender
         }
 
         /// <summary>
+        /// 通过 SendInput UNICODE 逐字符注入文本。无特殊字符转义问题。
+        /// </summary>
+        private static void SendUnicodeText(string text)
+        {
+            foreach (char c in text)
+            {
+                INPUT[] inputs = new INPUT[2];
+
+                inputs[0].type = INPUT_KEYBOARD;
+                inputs[0].U.ki.wVk = 0;
+                inputs[0].U.ki.wScan = c;
+                inputs[0].U.ki.dwFlags = KEYEVENTF_UNICODE;
+                inputs[0].U.ki.time = 0;
+                inputs[0].U.ki.dwExtraInfo = IntPtr.Zero;
+
+                inputs[1] = inputs[0];
+                inputs[1].U.ki.dwFlags = KEYEVENTF_UNICODE | KEYEVENTF_KEYUP;
+
+                SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(INPUT)));
+            }
+        }
+
+        /// <summary>
+        /// 通过 SendInput 发送回车键。
+        /// </summary>
+        private static void SendEnterKeyInput()
+        {
+            INPUT[] inputs = new INPUT[2];
+
+            inputs[0].type = INPUT_KEYBOARD;
+            inputs[0].U.ki.wVk = VK_RETURN;
+            inputs[0].U.ki.wScan = 0;
+            inputs[0].U.ki.dwFlags = 0;
+            inputs[0].U.ki.time = 0;
+            inputs[0].U.ki.dwExtraInfo = IntPtr.Zero;
+
+            inputs[1] = inputs[0];
+            inputs[1].U.ki.dwFlags = KEYEVENTF_KEYUP;
+
+            SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(INPUT)));
+        }
+
+        /// <summary>
         /// 强制将目标窗口置前。通过 AttachThreadInput 绕过前台窗口限制。
         /// </summary>
         private static void ForceSetForegroundWindow(IntPtr hWnd)
@@ -239,28 +310,6 @@ namespace CmdSender
             {
                 SetForegroundWindow(hWnd);
             }
-        }
-
-        /// <summary>
-        /// 转义 SendKeys 特殊字符：+ ^ % ~ ( ) { }
-        /// </summary>
-        private static string EscapeForSendKeys(string text)
-        {
-            StringBuilder sb = new StringBuilder(text.Length);
-            foreach (char c in text)
-            {
-                if ("+^%~(){}".IndexOf(c) >= 0)
-                {
-                    sb.Append('{');
-                    sb.Append(c);
-                    sb.Append('}');
-                }
-                else
-                {
-                    sb.Append(c);
-                }
-            }
-            return sb.ToString();
         }
 
         #endregion
